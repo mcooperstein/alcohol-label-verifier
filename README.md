@@ -124,3 +124,12 @@ The repository includes:
 - a GitHub Actions workflow for frontend lint/build and backend tests
 
 Suitable deployment targets include Render, Railway, or Fly.io using the root Dockerfile.
+
+### Render
+
+The repository includes `render.yaml` for a Docker-based web service on Render.
+
+1. Create a new **Blueprint** or **Web Service** in Render
+2. Point it at `mcooperstein/alcohol-label-verifier`
+3. Let Render build from the root `Dockerfile`
+4. Use `/api/health` as the health check path
