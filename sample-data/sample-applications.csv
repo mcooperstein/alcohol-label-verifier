@@ -1,0 +1,3 @@
+application_id,image_filename,brand_name,class_type,alcohol_content,net_contents,bottler,country_of_origin,imported
+DEMO-001,old-tom-label.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,45% Alc./Vol. (90 Proof),750 mL,"Bottled by Old Tom Distillery, Louisville, KY",,false
+DEMO-002,imported-rum-label.png,ISLA DORADA,Dark Rum,40% Alc./Vol. (80 Proof),700 mL,"Imported by Atlantic Beverage Co., New York, NY",Dominican Republic,true

@@ -1,0 +1,35 @@
+from __future__ import annotations
+
+import cv2
+import numpy as np
+
+
+def preprocess_image(image_bytes: bytes) -> tuple[np.ndarray, list[str]]:
+    image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+    image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+    if image is None:
+        raise ValueError("The uploaded file could not be decoded as an image.")
+
+    notes: list[str] = []
+    height, width = image.shape[:2]
+
+    if max(height, width) < 1400:
+        scale = 1400 / max(height, width)
+        image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        notes.append("Upscaled a small source image to improve OCR readability.")
+
+    grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    denoised = cv2.fastNlMeansDenoising(grayscale, h=15)
+    boosted = cv2.convertScaleAbs(denoised, alpha=1.2, beta=10)
+    thresholded = cv2.adaptiveThreshold(
+        boosted,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        31,
+        15,
+    )
+
+    notes.append("Applied grayscale, denoising, contrast boost, and adaptive thresholding.")
+    return thresholded, notes
