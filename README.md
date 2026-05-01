@@ -2,6 +2,10 @@
 
 A standalone prototype for compliance reviewers that compares expected alcohol label data against uploaded label artwork using local OCR and rule-based validation.
 
+## Live application
+
+**Live URL:** https://alcohol-label-verifier-12lu.onrender.com/
+
 ## What it does
 
 - Reviews a single label image against manually entered application data
