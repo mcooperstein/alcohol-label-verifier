@@ -2,6 +2,10 @@
 
 A standalone prototype for compliance reviewers that compares expected alcohol label data against uploaded label artwork using local OCR and rule-based validation.
 
+The app lets a reviewer upload an alcohol label image and enter the expected application data, then uses local OCR plus rule-based checks to compare what appears on the label against fields like brand name, class/type, alcohol content, net contents, bottler, country of origin, and the government warning. It returns a clear result of **Pass**, **Needs Review**, or **Fail**, along with field-level reasons and the extracted text so the reviewer can see exactly why.
+
+It also supports batch review by uploading a CSV and matching label images, then processes them in background jobs so larger uploads do not time out on free hosting. For harder real-world labels, the app can surface partial OCR, warnings about low-confidence text, and a likely recovered title when the visible branding is stylized.
+
 ## Live application
 
 **Live URL:** https://alcohol-label-verifier-12lu.onrender.com/
