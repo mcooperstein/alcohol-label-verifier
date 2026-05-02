@@ -118,12 +118,24 @@ def extract_panel_texts(image: np.ndarray) -> list[str]:
     import pytesseract
 
     region_specs = [
-        (image[:, : int(width * 0.56)], 6),
-        (image[int(height * 0.60) : int(height * 0.92), : int(width * 0.56)], 11),
         (
             image[
-                int(height * 0.14) : int(height * 0.90),
-                int(width * 0.50) : int(width * 0.78),
+                int(height * 0.38) : int(height * 0.66),
+                int(width * 0.05) : int(width * 0.46),
+            ],
+            6,
+        ),
+        (
+            image[
+                int(height * 0.64) : int(height * 0.88),
+                int(width * 0.10) : int(width * 0.48),
+            ],
+            11,
+        ),
+        (
+            image[
+                int(height * 0.14) : int(height * 0.44),
+                int(width * 0.53) : int(width * 0.76),
             ],
             6,
         ),
@@ -140,7 +152,7 @@ def extract_panel_texts(image: np.ndarray) -> list[str]:
 
             denoised = cv2.fastNlMeansDenoising(grayscale, h=10)
             boosted = cv2.convertScaleAbs(denoised, alpha=1.25, beta=8)
-            region = cv2.resize(boosted, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+            region = cv2.resize(boosted, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
 
         panel_text = pytesseract.image_to_string(
             region,
@@ -168,6 +180,14 @@ def recovery_score(fragment: str, expected_text: str) -> float:
         if len(token) >= 3 and token in fragment_normalized
     )
     score += min(shared_keywords * 0.05, 0.15)
+
+    fragment_tokens = [token for token in fragment_normalized.split() if len(token) >= 4]
+    expected_tokens = [token for token in expected_normalized.split() if len(token) >= 4]
+    fuzzy_keyword_matches = 0
+    for expected_token in expected_tokens:
+        if any(similarity(fragment_token, expected_token) >= 0.72 for fragment_token in fragment_tokens):
+            fuzzy_keyword_matches += 1
+    score += min(fuzzy_keyword_matches * 0.05, 0.12)
 
     return min(score, 0.99)
 
@@ -197,7 +217,7 @@ def recover_expected_text(
             ),
             default=0.0,
         )
-        threshold = 0.6 if any(character.isdigit() for character in candidate) else 0.72
+        threshold = 0.58 if any(character.isdigit() for character in candidate) else 0.68
         if best_score >= threshold:
             recovered_lines.append(candidate)
 
