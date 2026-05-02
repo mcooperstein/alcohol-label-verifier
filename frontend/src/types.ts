@@ -1,4 +1,5 @@
 export type ReviewStatus = 'pass' | 'needs_review' | 'fail'
+export type BatchJobStatus = 'queued' | 'running' | 'completed' | 'failed'
 
 export interface ApplicationData {
   brand_name: string
@@ -57,4 +58,16 @@ export interface BatchReviewResponse {
   needs_review: number
   failed: number
   results: BatchReviewItem[]
+}
+
+export interface BatchReviewJobResponse {
+  job_id: string
+  status: BatchJobStatus
+  total_rows: number
+  processed_rows: number
+  passed: number
+  needs_review: number
+  failed: number
+  results: BatchReviewItem[]
+  error: string | null
 }

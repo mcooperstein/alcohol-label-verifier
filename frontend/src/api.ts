@@ -1,4 +1,4 @@
-import type { ApplicationData, BatchReviewResponse, ReviewResponse } from './types'
+import type { ApplicationData, BatchReviewJobResponse, ReviewResponse } from './types'
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.ok) {
@@ -40,17 +40,22 @@ export async function submitSingleReview(
 export async function submitBatchReview(
   csvFile: File,
   images: File[],
-): Promise<BatchReviewResponse> {
+): Promise<BatchReviewJobResponse> {
   const formData = new FormData()
   formData.append('csv_file', csvFile)
   images.forEach((image) => {
     formData.append('images', image)
   })
 
-  const response = await fetch('/api/batch-review', {
+  const response = await fetch('/api/batch-review-jobs', {
     method: 'POST',
     body: formData,
   })
 
-  return parseResponse<BatchReviewResponse>(response)
+  return parseResponse<BatchReviewJobResponse>(response)
+}
+
+export async function getBatchReviewJob(jobId: string): Promise<BatchReviewJobResponse> {
+  const response = await fetch(`/api/batch-review-jobs/${jobId}`)
+  return parseResponse<BatchReviewJobResponse>(response)
 }

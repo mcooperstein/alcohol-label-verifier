@@ -9,6 +9,13 @@ class ReviewStatus(str, Enum):
     FAIL = "fail"
 
 
+class BatchJobStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ApplicationData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -68,3 +75,15 @@ class BatchReviewResponse(BaseModel):
     needs_review: int
     failed: int
     results: list[BatchReviewItem]
+
+
+class BatchReviewJobResponse(BaseModel):
+    job_id: str
+    status: BatchJobStatus
+    total_rows: int
+    processed_rows: int
+    passed: int
+    needs_review: int
+    failed: int
+    results: list[BatchReviewItem] = Field(default_factory=list)
+    error: str | None = None

@@ -1,9 +1,10 @@
-import { type ChangeEvent, type FormEvent, useMemo, useState } from 'react'
-import { submitBatchReview, submitSingleReview } from './api'
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
+import { getBatchReviewJob, submitBatchReview, submitSingleReview } from './api'
 import './App.css'
 import type {
   ApplicationData,
-  BatchReviewResponse,
+  BatchJobStatus,
+  BatchReviewJobResponse,
   FieldReviewResult,
   ReviewResponse,
   ReviewStatus,
@@ -30,6 +31,19 @@ function statusLabel(status: ReviewStatus): string {
   }
 }
 
+function batchJobStatusLabel(status: BatchJobStatus): string {
+  switch (status) {
+    case 'queued':
+      return 'Queued'
+    case 'running':
+      return 'Running'
+    case 'completed':
+      return 'Completed'
+    case 'failed':
+      return 'Failed'
+  }
+}
+
 function App() {
   const [activeView, setActiveView] = useState<'single' | 'batch'>('single')
   const [applicationData, setApplicationData] = useState<ApplicationData>(initialApplicationData)
@@ -40,14 +54,46 @@ function App() {
 
   const [batchCsv, setBatchCsv] = useState<File | null>(null)
   const [batchImages, setBatchImages] = useState<File[]>([])
-  const [batchResult, setBatchResult] = useState<BatchReviewResponse | null>(null)
+  const [batchJob, setBatchJob] = useState<BatchReviewJobResponse | null>(null)
   const [batchError, setBatchError] = useState<string>('')
   const [isSubmittingBatch, setIsSubmittingBatch] = useState(false)
+  const isBatchRunning = batchJob?.status === 'queued' || batchJob?.status === 'running'
 
   const selectedImageNames = useMemo(
     () => batchImages.map((file) => file.name).join(', '),
     [batchImages],
   )
+
+  useEffect(() => {
+    if (!batchJob || !isBatchRunning) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const updatedJob = await getBatchReviewJob(batchJob.job_id)
+        setBatchJob(updatedJob)
+        if (updatedJob.status === 'failed' && updatedJob.error) {
+          setBatchError(updatedJob.error)
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unable to refresh batch progress.'
+        setBatchError(message)
+        setBatchJob((current) =>
+          current
+            ? {
+                ...current,
+                status: 'failed',
+                error: message,
+              }
+            : current,
+        )
+      }
+    }, 1200)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [batchJob, isBatchRunning])
 
   const handleInputChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -98,12 +144,12 @@ function App() {
 
     setIsSubmittingBatch(true)
     setBatchError('')
+    setBatchJob(null)
 
     try {
-      const result = await submitBatchReview(batchCsv, batchImages)
-      setBatchResult(result)
+      const job = await submitBatchReview(batchCsv, batchImages)
+      setBatchJob(job)
     } catch (error) {
-      setBatchResult(null)
       setBatchError(error instanceof Error ? error.message : 'Unable to process the batch.')
     } finally {
       setIsSubmittingBatch(false)
@@ -349,8 +395,12 @@ function App() {
             {selectedImageNames ? <p className="helper-text">{selectedImageNames}</p> : null}
             {batchError ? <p className="error-banner">{batchError}</p> : null}
 
-            <button className="primary-button" disabled={isSubmittingBatch} type="submit">
-              {isSubmittingBatch ? 'Processing batch...' : 'Run batch review'}
+            <button className="primary-button" disabled={isSubmittingBatch || isBatchRunning} type="submit">
+              {isSubmittingBatch
+                ? 'Starting batch review...'
+                : isBatchRunning
+                  ? 'Batch review in progress...'
+                  : 'Run batch review'}
             </button>
           </form>
 
@@ -360,13 +410,28 @@ function App() {
               <p>Review statuses are grouped by row so reviewers can quickly triage the queue.</p>
             </div>
 
-            {batchResult ? (
+            {batchJob ? (
               <>
+                <div className="summary-card">
+                  <div className="summary-header batch-progress-header">
+                    <p className="progress-copy">
+                      <strong>{batchJobStatusLabel(batchJob.status)}</strong> - processed{' '}
+                      {batchJob.processed_rows} of {batchJob.total_rows} rows
+                    </p>
+                    <p className="progress-copy">
+                      {isBatchRunning
+                        ? 'Rows are being processed in the background to avoid host timeouts.'
+                        : 'Batch processing finished.'}
+                    </p>
+                  </div>
+                </div>
+
                 <div className="batch-summary-grid">
-                  <SummaryStat label="Rows" value={String(batchResult.total_rows)} />
-                  <SummaryStat label="Pass" value={String(batchResult.passed)} />
-                  <SummaryStat label="Needs Review" value={String(batchResult.needs_review)} />
-                  <SummaryStat label="Fail" value={String(batchResult.failed)} />
+                  <SummaryStat label="Rows" value={String(batchJob.total_rows)} />
+                  <SummaryStat label="Processed" value={String(batchJob.processed_rows)} />
+                  <SummaryStat label="Pass" value={String(batchJob.passed)} />
+                  <SummaryStat label="Needs Review" value={String(batchJob.needs_review)} />
+                  <SummaryStat label="Fail" value={String(batchJob.failed)} />
                 </div>
 
                 <div className="table-wrapper">
@@ -381,7 +446,7 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {batchResult.results.map((item) => (
+                      {batchJob.results.map((item) => (
                         <tr key={`${item.row_number}-${item.image_filename ?? 'missing'}`}>
                           <td>{item.row_number}</td>
                           <td>{item.application_id ?? '—'}</td>

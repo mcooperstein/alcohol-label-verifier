@@ -29,6 +29,7 @@ A standalone prototype for compliance reviewers that compares expected alcohol l
   - country of origin for imports
   - government warning
 - Supports batch review with CSV + image uploads
+- Processes batch uploads in a background job with incremental progress updates to avoid free-tier request timeouts
 - Returns **Pass**, **Needs Review**, or **Fail** with field-level reasons
 
 ## Tech stack

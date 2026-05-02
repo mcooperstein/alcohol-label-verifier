@@ -204,8 +204,17 @@ textarea:focus {
   align-items: center;
 }
 
+.batch-progress-header {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .summary-header p {
   margin: 0;
+}
+
+.progress-copy {
+  color: #486581;
 }
 
 .status-badge {
@@ -309,7 +318,7 @@ th {
 }
 
 .batch-summary-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
 
 .summary-stat {
