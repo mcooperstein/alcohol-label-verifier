@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
+
+import numpy as np
+
+from .parsing import extract_label_fields, similarity, split_lines
 
 
 class OCRUnavailableError(RuntimeError):
@@ -11,21 +16,76 @@ class OCRUnavailableError(RuntimeError):
 class OCRResult:
     text: str
     average_confidence: float | None
+    rotation_degrees: int = 0
+    page_segmentation_mode: int = 6
+    image_variant: str = "thresholded"
 
 
-def extract_text(image) -> OCRResult:
-    try:
-        import pytesseract
-        from pytesseract import Output
-    except ImportError as exc:  # pragma: no cover - dependency failure path
-        raise OCRUnavailableError("pytesseract is not installed.") from exc
+def rotate_image(image: np.ndarray, rotation_degrees: int) -> np.ndarray:
+    if rotation_degrees == 0:
+        return image
+    if rotation_degrees == 90:
+        return np.rot90(image, k=3).copy()
+    if rotation_degrees == 180:
+        return np.rot90(image, k=2).copy()
+    if rotation_degrees == 270:
+        return np.rot90(image, k=1).copy()
+    raise ValueError(f"Unsupported rotation: {rotation_degrees}")
 
-    try:
-        ocr_data = pytesseract.image_to_data(image, output_type=Output.DICT, config="--oem 3 --psm 6")
-    except pytesseract.pytesseract.TesseractNotFoundError as exc:
-        raise OCRUnavailableError(
-            "Tesseract OCR is not installed or is not available on the system PATH."
-        ) from exc
+
+def candidate_score(
+    text: str,
+    average_confidence: float | None,
+    expected_texts: list[str] | None = None,
+) -> float:
+    field_count = sum(value is not None for value in extract_label_fields(text).model_dump().values())
+    expected_bonus, strong_match_count, _ = expected_match_metrics(text, expected_texts)
+    return (
+        (average_confidence or 0.0) * 2.0
+        + field_count * 18
+        + expected_bonus * 140
+        + strong_match_count * 120
+    )
+
+
+def expected_match_metrics(
+    text: str,
+    expected_texts: list[str] | None,
+) -> tuple[float, int, float]:
+    lines = split_lines(text)
+    expected_bonus = 0.0
+    strong_match_count = 0
+    max_similarity = 0.0
+
+    for expected_text in expected_texts or []:
+        normalized = expected_text.strip()
+        if not normalized:
+            continue
+        best_similarity = max((similarity(line, normalized) for line in lines), default=0.0)
+        expected_bonus += best_similarity
+        max_similarity = max(max_similarity, best_similarity)
+        if best_similarity >= 0.55:
+            strong_match_count += 1
+
+    return expected_bonus, strong_match_count, max_similarity
+
+
+def extract_text_once(
+    image,
+    *,
+    rotation_degrees: int,
+    page_segmentation_mode: int,
+    image_variant: str,
+) -> OCRResult:
+    import pytesseract
+    from pytesseract import Output
+
+    rotated_image = rotate_image(image, rotation_degrees)
+    ocr_data = pytesseract.image_to_data(
+        rotated_image,
+        output_type=Output.DICT,
+        config=f"--oem 3 --psm {page_segmentation_mode}",
+    )
 
     lines: list[str] = []
     current_line_tokens: list[str] = []
@@ -62,8 +122,88 @@ def extract_text(image) -> OCRResult:
     if current_line_tokens:
         lines.append(" ".join(current_line_tokens))
 
-    average_confidence = (
-        round(sum(confidences) / len(confidences), 2) if confidences else None
+    average_confidence = round(sum(confidences) / len(confidences), 2) if confidences else None
+
+    return OCRResult(
+        text="\n".join(lines),
+        average_confidence=average_confidence,
+        rotation_degrees=rotation_degrees,
+        page_segmentation_mode=page_segmentation_mode,
+        image_variant=image_variant,
     )
 
-    return OCRResult(text="\n".join(lines), average_confidence=average_confidence)
+
+def extract_text(
+    image,
+    alternate_images: list[tuple[str, np.ndarray]] | None = None,
+    expected_texts: list[str] | None = None,
+) -> OCRResult:
+    try:
+        import pytesseract
+        from pytesseract import Output
+    except ImportError as exc:  # pragma: no cover - dependency failure path
+        raise OCRUnavailableError("pytesseract is not installed.") from exc
+
+    try:
+        initial_result = extract_text_once(
+            image,
+            rotation_degrees=0,
+            page_segmentation_mode=6,
+            image_variant="thresholded",
+        )
+    except pytesseract.pytesseract.TesseractNotFoundError as exc:
+        raise OCRUnavailableError(
+            "Tesseract OCR is not installed or is not available on the system PATH."
+        ) from exc
+
+    candidates = [initial_result]
+    initial_score = candidate_score(
+        initial_result.text,
+        initial_result.average_confidence,
+        expected_texts=expected_texts,
+    )
+    _, initial_strong_match_count, initial_max_similarity = expected_match_metrics(
+        initial_result.text,
+        expected_texts,
+    )
+    should_try_rotations = (
+        image.shape[1] > image.shape[0]
+        or initial_score < 170
+        or initial_strong_match_count == 0
+        or initial_max_similarity < 0.7
+    )
+
+    if should_try_rotations:
+        image_variants = [("thresholded", image), *(alternate_images or [])]
+
+        for image_variant, candidate_image in image_variants:
+            rotation_options = (
+                [0, 90, 180, 270]
+                if candidate_image.shape[1] > candidate_image.shape[0]
+                else [0, 180, 90, 270]
+            )
+            tried_specs = {(0, 6)} if image_variant == "thresholded" else set()
+
+            for rotation_degrees in rotation_options:
+                for page_segmentation_mode in (6, 11):
+                    spec = (rotation_degrees, page_segmentation_mode)
+                    if spec in tried_specs:
+                        continue
+                    tried_specs.add(spec)
+                    candidates.append(
+                        extract_text_once(
+                            candidate_image,
+                            rotation_degrees=rotation_degrees,
+                            page_segmentation_mode=page_segmentation_mode,
+                            image_variant=image_variant,
+                        )
+                    )
+
+    return max(
+        candidates,
+        key=lambda candidate: candidate_score(
+            candidate.text,
+            candidate.average_confidence,
+            expected_texts=expected_texts,
+        ),
+    )

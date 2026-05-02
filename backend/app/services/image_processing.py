@@ -1,15 +1,24 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import cv2
 import numpy as np
+from PIL import Image, ImageOps
 
 MIN_OCR_DIMENSION = 1400
 MAX_OCR_DIMENSION = 2200
 
 
-def preprocess_image(image_bytes: bytes) -> tuple[np.ndarray, list[str]]:
-    image_array = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+def preprocess_image(image_bytes: bytes) -> tuple[np.ndarray, list[str], list[tuple[str, np.ndarray]]]:
+    image = None
+    try:
+        with Image.open(BytesIO(image_bytes)) as pil_image:
+            corrected_image = ImageOps.exif_transpose(pil_image).convert("RGB")
+            image = cv2.cvtColor(np.array(corrected_image), cv2.COLOR_RGB2BGR)
+    except Exception:
+        image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
 
     if image is None:
         raise ValueError("The uploaded file could not be decoded as an image.")
@@ -40,4 +49,5 @@ def preprocess_image(image_bytes: bytes) -> tuple[np.ndarray, list[str]]:
     )
 
     notes.append("Applied grayscale, denoising, contrast boost, and adaptive thresholding.")
-    return thresholded, notes
+    alternate_images = [("boosted grayscale", boosted)]
+    return thresholded, notes, alternate_images

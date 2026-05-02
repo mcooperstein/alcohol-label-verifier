@@ -60,8 +60,32 @@ def parse_application_data(payload: str) -> ApplicationData:
 
 def run_review(image_bytes: bytes, application: ApplicationData) -> ReviewResponse:
     start = perf_counter()
-    processed_image, preprocessing_notes = preprocess_image(image_bytes)
-    ocr_result = extract_text(processed_image)
+    processed_image, preprocessing_notes, alternate_images = preprocess_image(image_bytes)
+    expected_texts = [
+        application.brand_name,
+        application.class_type or "",
+        application.alcohol_content or "",
+        application.net_contents or "",
+        application.bottler or "",
+        application.country_of_origin or "",
+    ]
+    ocr_result = extract_text(
+        processed_image,
+        alternate_images=alternate_images,
+        expected_texts=expected_texts,
+    )
+    if ocr_result.rotation_degrees:
+        preprocessing_notes.append(
+            f"Rotated the image {ocr_result.rotation_degrees} degrees for OCR."
+        )
+    if ocr_result.page_segmentation_mode != 6:
+        preprocessing_notes.append(
+            f"Used OCR page segmentation mode {ocr_result.page_segmentation_mode} for sparse text."
+        )
+    if ocr_result.image_variant != "thresholded":
+        preprocessing_notes.append(
+            f"Used the {ocr_result.image_variant} image variant for OCR."
+        )
     extracted_fields = extract_label_fields(ocr_result.text)
     overall_status, field_results, warnings, summary = validate_label(
         application=application,
