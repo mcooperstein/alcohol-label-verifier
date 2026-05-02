@@ -16,6 +16,10 @@ A standalone prototype for compliance reviewers that compares expected alcohol l
 
 ![Version 1 batch review screenshot](docs/screenshots/version-1-batch-review.png)
 
+### Version 1 batch review results
+
+![Version 1 batch review results screenshot](docs/screenshots/version-1-batch-results-10-items.png)
+
 ## What it does
 
 - Reviews a single label image against manually entered application data
