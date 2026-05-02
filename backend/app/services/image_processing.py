@@ -3,6 +3,9 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+MIN_OCR_DIMENSION = 1400
+MAX_OCR_DIMENSION = 2200
+
 
 def preprocess_image(image_bytes: bytes) -> tuple[np.ndarray, list[str]]:
     image_array = np.frombuffer(image_bytes, dtype=np.uint8)
@@ -14,8 +17,13 @@ def preprocess_image(image_bytes: bytes) -> tuple[np.ndarray, list[str]]:
     notes: list[str] = []
     height, width = image.shape[:2]
 
-    if max(height, width) < 1400:
-        scale = 1400 / max(height, width)
+    if max(height, width) > MAX_OCR_DIMENSION:
+        scale = MAX_OCR_DIMENSION / max(height, width)
+        image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        notes.append("Downscaled a large source image to improve OCR speed and stability.")
+
+    if max(height, width) < MIN_OCR_DIMENSION:
+        scale = MIN_OCR_DIMENSION / max(height, width)
         image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
         notes.append("Upscaled a small source image to improve OCR readability.")
 
