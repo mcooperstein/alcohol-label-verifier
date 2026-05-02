@@ -174,30 +174,38 @@ def extract_text(
     )
 
     if should_try_rotations:
-        image_variants = [("thresholded", image), *(alternate_images or [])]
+        image_variants = {"thresholded": image, **dict(alternate_images or [])}
+        prioritized_specs: list[tuple[str, int, int]] = [
+            ("thresholded", 0, 11),
+            ("boosted grayscale", 0, 11),
+            ("boosted grayscale", 0, 6),
+        ]
 
-        for image_variant, candidate_image in image_variants:
-            rotation_options = (
-                [0, 90, 180, 270]
-                if candidate_image.shape[1] > candidate_image.shape[0]
-                else [0, 180, 90, 270]
+        if image.shape[1] > image.shape[0]:
+            prioritized_specs = [
+                ("thresholded", 90, 11),
+                ("thresholded", 270, 11),
+                ("boosted grayscale", 90, 11),
+                ("boosted grayscale", 270, 11),
+                *prioritized_specs,
+            ]
+
+        seen_specs = {("thresholded", 0, 6)}
+        for image_variant, rotation_degrees, page_segmentation_mode in prioritized_specs:
+            if (image_variant, rotation_degrees, page_segmentation_mode) in seen_specs:
+                continue
+            candidate_image = image_variants.get(image_variant)
+            if candidate_image is None:
+                continue
+            seen_specs.add((image_variant, rotation_degrees, page_segmentation_mode))
+            candidates.append(
+                extract_text_once(
+                    candidate_image,
+                    rotation_degrees=rotation_degrees,
+                    page_segmentation_mode=page_segmentation_mode,
+                    image_variant=image_variant,
+                )
             )
-            tried_specs = {(0, 6)} if image_variant == "thresholded" else set()
-
-            for rotation_degrees in rotation_options:
-                for page_segmentation_mode in (6, 11):
-                    spec = (rotation_degrees, page_segmentation_mode)
-                    if spec in tried_specs:
-                        continue
-                    tried_specs.add(spec)
-                    candidates.append(
-                        extract_text_once(
-                            candidate_image,
-                            rotation_degrees=rotation_degrees,
-                            page_segmentation_mode=page_segmentation_mode,
-                            image_variant=image_variant,
-                        )
-                    )
 
     return max(
         candidates,
