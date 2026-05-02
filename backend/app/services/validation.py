@@ -312,6 +312,10 @@ def validate_label(
         warnings.append(
             "OCR confidence was lower than expected. Borderline matches should be reviewed carefully."
         )
+    if average_confidence is not None and average_confidence < 45 and len(lines) <= 4:
+        warnings.append(
+            "The uploaded label appears highly stylized or low contrast, so OCR only recovered partial text."
+        )
 
     field_results = [
         compare_text_field(

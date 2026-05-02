@@ -119,3 +119,30 @@ def test_summary_lists_failed_and_review_fields() -> None:
     assert any(result.status == ReviewStatus.NEEDS_REVIEW for result in field_results)
     assert "Failed: Country of origin." in summary
     assert "Needs review: Brand name." in summary
+
+
+def test_low_confidence_partial_ocr_adds_stylized_label_warning() -> None:
+    application = ApplicationData(
+        brand_name="Big Tree",
+        class_type="Double IPA",
+        imported=False,
+    )
+    raw_text = "\n".join(
+        [
+            "BIGE UBLE IPA!",
+            "got Se",
+        ]
+    )
+    extracted_fields = LabelFields(
+        brand_name="BIGE UBLE IPA!",
+        class_type="BIGE UBLE IPA!",
+    )
+
+    _, _, warnings, _ = validate_label(
+        application=application,
+        raw_text=raw_text,
+        extracted_fields=extracted_fields,
+        average_confidence=36.0,
+    )
+
+    assert any("partial text" in warning for warning in warnings)

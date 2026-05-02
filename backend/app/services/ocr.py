@@ -5,7 +5,7 @@ import re
 
 import numpy as np
 
-from .parsing import extract_label_fields, similarity, split_lines
+from .parsing import extract_label_fields, normalize_for_match, similarity, split_lines
 
 
 class OCRUnavailableError(RuntimeError):
@@ -19,6 +19,81 @@ class OCRResult:
     rotation_degrees: int = 0
     page_segmentation_mode: int = 6
     image_variant: str = "thresholded"
+
+
+def normalize_ocr_line(line: str) -> str:
+    return re.sub(r"\s+", " ", line).strip(" _-|~`'\":;,.")
+
+
+def is_meaningful_ocr_line(line: str) -> bool:
+    normalized = normalize_ocr_line(line)
+    if not normalized:
+        return False
+
+    alnum_count = sum(character.isalnum() for character in normalized)
+    alpha_count = sum(character.isalpha() for character in normalized)
+    digit_count = sum(character.isdigit() for character in normalized)
+    signal_tokens = [
+        re.sub(r"[^A-Za-z0-9%./-]", "", token)
+        for token in normalized.split()
+    ]
+    significant_tokens = [token for token in signal_tokens if len(token) >= 4]
+
+    if alnum_count == 0:
+        return False
+
+    return (
+        digit_count >= 2
+        or alpha_count >= 4
+        or bool(significant_tokens)
+    ) and alnum_count / len(normalized) >= 0.35
+
+
+def is_uppercase_fragment(line: str) -> bool:
+    alpha_characters = [character for character in line if character.isalpha()]
+    if len(alpha_characters) < 3:
+        return False
+
+    uppercase_ratio = sum(character.isupper() for character in alpha_characters) / len(alpha_characters)
+    compact_alpha = "".join(alpha_characters)
+    return uppercase_ratio >= 0.7 and len(compact_alpha) <= 14
+
+
+def should_merge_ocr_lines(previous_line: str, current_line: str) -> bool:
+    if any(character.isdigit() for character in previous_line + current_line):
+        return False
+
+    previous_alpha = "".join(character for character in previous_line if character.isalpha())
+    current_alpha = "".join(character for character in current_line if character.isalpha())
+    if not previous_alpha or not current_alpha:
+        return False
+
+    return (
+        is_uppercase_fragment(previous_line)
+        and is_uppercase_fragment(current_line)
+        and len(previous_alpha) <= 8
+        and len(current_alpha) <= 12
+    )
+
+
+def sanitize_ocr_text(raw_text: str) -> str:
+    cleaned_lines: list[str] = []
+
+    for line in raw_text.splitlines():
+        normalized = normalize_ocr_line(line)
+        if not is_meaningful_ocr_line(normalized):
+            continue
+
+        if cleaned_lines and should_merge_ocr_lines(cleaned_lines[-1], normalized):
+            cleaned_lines[-1] = f"{cleaned_lines[-1]} {normalized}"
+            continue
+
+        if cleaned_lines and normalize_for_match(cleaned_lines[-1]) == normalize_for_match(normalized):
+            continue
+
+        cleaned_lines.append(normalized)
+
+    return "\n".join(cleaned_lines)
 
 
 def rotate_image(image: np.ndarray, rotation_degrees: int) -> np.ndarray:
@@ -124,8 +199,11 @@ def extract_text_once(
 
     average_confidence = round(sum(confidences) / len(confidences), 2) if confidences else None
 
+    raw_text = "\n".join(lines)
+    sanitized_text = sanitize_ocr_text(raw_text)
+
     return OCRResult(
-        text="\n".join(lines),
+        text=sanitized_text or raw_text,
         average_confidence=average_confidence,
         rotation_degrees=rotation_degrees,
         page_segmentation_mode=page_segmentation_mode,
