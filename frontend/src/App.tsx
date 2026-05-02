@@ -412,7 +412,7 @@ function App() {
 
                 {singleResult.recovered_text ? (
                   <div className="text-card">
-                    <h3>Likely recovered title</h3>
+                    <h3>Likely recovered text</h3>
                     <pre>{singleResult.recovered_text}</pre>
                   </div>
                 ) : null}

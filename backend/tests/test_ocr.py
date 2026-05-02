@@ -1,4 +1,4 @@
-from app.services.ocr import recover_likely_title, sanitize_ocr_text
+from app.services.ocr import recover_expected_text, sanitize_ocr_text
 
 
 def test_sanitize_ocr_text_removes_low_signal_noise_and_merges_title_fragments() -> None:
@@ -40,7 +40,7 @@ def test_sanitize_ocr_text_keeps_numeric_compliance_lines() -> None:
     )
 
 
-def test_recover_likely_title_uses_expected_text_for_strong_fragment_match() -> None:
+def test_recover_expected_text_uses_expected_values_for_strong_fragment_match() -> None:
     raw_text = "\n".join(
         [
             "BIGE UBLE IPA!",
@@ -48,7 +48,28 @@ def test_recover_likely_title_uses_expected_text_for_strong_fragment_match() -> 
         ]
     )
 
-    assert recover_likely_title(
+    assert recover_expected_text(
         raw_text,
         ["Big Tree", "Double IPA", "Big Tree Double IPA"],
     ) == "Big Tree Double IPA"
+
+
+def test_recover_expected_text_includes_multiple_recovered_lines() -> None:
+    raw_text = "\n".join(
+        [
+            "atOMIC q UC",
+            "Hazy Boule iol",
+            "aic. 8% BY",
+        ]
+    )
+
+    assert recover_expected_text(
+        raw_text,
+        ["Atomic Duck", "Hazy Double I.P.A.", "8% By Vol."],
+    ) == "\n".join(
+        [
+            "Atomic Duck",
+            "Hazy Double I.P.A.",
+            "8% By Vol.",
+        ]
+    )

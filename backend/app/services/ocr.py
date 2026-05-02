@@ -97,11 +97,8 @@ def sanitize_ocr_text(raw_text: str) -> str:
     return "\n".join(cleaned_lines)
 
 
-def recover_likely_title(raw_text: str, expected_texts: list[str] | None) -> str | None:
+def recovery_fragments_from_text(raw_text: str) -> list[str]:
     lines = [normalize_ocr_line(line) for line in raw_text.splitlines() if normalize_ocr_line(line)]
-    if not lines:
-        return None
-
     fragments = [*lines]
     fragments.extend(
         f"{lines[index]} {lines[index + 1]}"
@@ -109,29 +106,115 @@ def recover_likely_title(raw_text: str, expected_texts: list[str] | None) -> str
     )
     if len(lines) > 1:
         fragments.append(" ".join(lines))
+    return fragments
 
-    best_expected: str | None = None
-    best_score = 0.0
+
+def extract_panel_texts(image: np.ndarray) -> list[str]:
+    height, width = image.shape[:2]
+    aspect_ratio = width / max(height, 1)
+    if aspect_ratio < 0.85:
+        return []
+
+    import pytesseract
+
+    region_specs = [
+        (image[:, : int(width * 0.56)], 6),
+        (image[int(height * 0.60) : int(height * 0.92), : int(width * 0.56)], 11),
+        (
+            image[
+                int(height * 0.14) : int(height * 0.90),
+                int(width * 0.50) : int(width * 0.78),
+            ],
+            6,
+        ),
+    ]
+
+    panel_texts: list[str] = []
+    for region, page_segmentation_mode in region_specs:
+        if region.size == 0:
+            continue
+        grayscale = region if len(region.shape) == 2 else region.mean(axis=2).astype(np.uint8)
+        denoised = grayscale
+        if len(grayscale.shape) == 2:
+            import cv2
+
+            denoised = cv2.fastNlMeansDenoising(grayscale, h=10)
+            boosted = cv2.convertScaleAbs(denoised, alpha=1.25, beta=8)
+            region = cv2.resize(boosted, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+
+        panel_text = pytesseract.image_to_string(
+            region,
+            config=f"--oem 3 --psm {page_segmentation_mode}",
+        )
+        cleaned_panel_text = sanitize_ocr_text(panel_text)
+        if cleaned_panel_text:
+            panel_texts.append(cleaned_panel_text)
+
+    return panel_texts
+
+
+def recovery_score(fragment: str, expected_text: str) -> float:
+    score = similarity(fragment, expected_text)
+    fragment_normalized = normalize_for_match(fragment)
+    expected_normalized = normalize_for_match(expected_text)
+
+    expected_digits = re.findall(r"\d+(?:\.\d+)?", expected_normalized)
+    if expected_digits and all(digit in fragment_normalized for digit in expected_digits):
+        score += 0.18
+
+    shared_keywords = sum(
+        1
+        for token in expected_normalized.split()
+        if len(token) >= 3 and token in fragment_normalized
+    )
+    score += min(shared_keywords * 0.05, 0.15)
+
+    return min(score, 0.99)
+
+
+def recover_expected_text(
+    raw_text: str,
+    expected_texts: list[str] | None,
+    supplemental_texts: list[str] | None = None,
+) -> str | None:
+    fragments = recovery_fragments_from_text(raw_text)
+    for supplemental_text in supplemental_texts or []:
+        fragments.extend(recovery_fragments_from_text(supplemental_text))
+
+    recovered_lines: list[str] = []
 
     for expected_text in expected_texts or []:
         candidate = expected_text.strip()
-        if len(normalize_for_match(candidate).replace(" ", "")) < 5:
+        candidate_normalized = normalize_for_match(candidate)
+        if len(candidate_normalized.replace(" ", "")) < 5:
             continue
 
-        for fragment in fragments:
-            fragment_normalized = normalize_for_match(fragment)
-            if len(fragment_normalized.replace(" ", "")) < 5:
-                continue
+        best_score = max(
+            (
+                recovery_score(fragment, candidate)
+                for fragment in fragments
+                if len(normalize_for_match(fragment).replace(" ", "")) >= 4
+            ),
+            default=0.0,
+        )
+        threshold = 0.6 if any(character.isdigit() for character in candidate) else 0.72
+        if best_score >= threshold:
+            recovered_lines.append(candidate)
 
-            score = similarity(fragment, candidate)
-            if score > best_score:
-                best_expected = candidate
-                best_score = score
+    deduped_lines: list[str] = []
+    for line in recovered_lines:
+        line_normalized = normalize_for_match(line)
+        if any(
+            line_normalized in normalize_for_match(existing)
+            and line_normalized != normalize_for_match(existing)
+            for existing in recovered_lines
+        ):
+            continue
+        if line_normalized in {normalize_for_match(existing) for existing in deduped_lines}:
+            continue
+        deduped_lines.append(line)
 
-    if best_expected is None or best_score < 0.8:
-        return None
-
-    return best_expected
+    return "\n".join(deduped_lines) if deduped_lines else None
 
 
 def rotate_image(image: np.ndarray, rotation_degrees: int) -> np.ndarray:
