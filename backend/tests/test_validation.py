@@ -75,3 +75,47 @@ def test_alcohol_mismatch_fails_review() -> None:
 
     assert overall_status == ReviewStatus.FAIL
     assert alcohol_result.status == ReviewStatus.FAIL
+
+
+def test_summary_lists_failed_and_review_fields() -> None:
+    application = ApplicationData(
+        brand_name="Isla Dorada",
+        class_type="Dark Rum",
+        alcohol_content="40% Alc./Vol. (80 Proof)",
+        net_contents="700 mL",
+        bottler="Imported by Atlantic Beverage Co., New York, NY",
+        country_of_origin="Jamaica",
+        imported=True,
+    )
+    raw_text = "\n".join(
+        [
+            "ISLA DORADA",
+            "Dark Rum",
+            "40% Alc./Vol. (80 Proof)",
+            "700 mL",
+            "Imported by Atlantic Beverage Co., New York, NY",
+            "Product of Dominican Republic",
+            CANONICAL_GOVERNMENT_WARNING,
+        ]
+    )
+    extracted_fields = LabelFields(
+        brand_name="ISLA DORADA",
+        class_type="Dark Rum",
+        alcohol_content="40% Alc./Vol. (80 Proof)",
+        net_contents="700 mL",
+        bottler="Imported by Atlantic Beverage Co., New York, NY",
+        country_of_origin="Product of Dominican Republic",
+        government_warning=CANONICAL_GOVERNMENT_WARNING,
+    )
+
+    overall_status, field_results, _, summary = validate_label(
+        application=application,
+        raw_text=raw_text,
+        extracted_fields=extracted_fields,
+        average_confidence=95.0,
+    )
+
+    assert overall_status == ReviewStatus.FAIL
+    assert any(result.status == ReviewStatus.NEEDS_REVIEW for result in field_results)
+    assert "Failed: Country of origin." in summary
+    assert "Needs review: Brand name." in summary

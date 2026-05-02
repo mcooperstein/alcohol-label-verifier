@@ -14,14 +14,19 @@ from .parsing import (
 
 
 def build_summary(overall_status: ReviewStatus, field_results: list[FieldReviewResult]) -> str:
-    failures = sum(result.status == ReviewStatus.FAIL for result in field_results)
-    needs_review = sum(result.status == ReviewStatus.NEEDS_REVIEW for result in field_results)
+    failed_labels = [result.label for result in field_results if result.status == ReviewStatus.FAIL]
+    review_labels = [result.label for result in field_results if result.status == ReviewStatus.NEEDS_REVIEW]
 
     if overall_status == ReviewStatus.PASS:
         return "All reviewed label checks passed."
     if overall_status == ReviewStatus.NEEDS_REVIEW:
-        return f"{needs_review} field(s) need review before a decision."
-    return f"{failures} field(s) failed and {needs_review} field(s) need review."
+        return f"Needs review: {', '.join(review_labels)}."
+    if review_labels:
+        return (
+            f"Failed: {', '.join(failed_labels)}. "
+            f"Needs review: {', '.join(review_labels)}."
+        )
+    return f"Failed: {', '.join(failed_labels)}."
 
 
 def determine_overall_status(field_results: list[FieldReviewResult]) -> ReviewStatus:
