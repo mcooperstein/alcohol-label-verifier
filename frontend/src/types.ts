@@ -34,6 +34,7 @@ export interface ReviewResponse {
   overall_status: ReviewStatus
   summary: string
   raw_text: string
+  recovered_text: string | null
   extracted_fields: LabelFields
   field_results: FieldReviewResult[]
   preprocessing_notes: string[]

@@ -1,4 +1,4 @@
-from app.services.ocr import sanitize_ocr_text
+from app.services.ocr import recover_likely_title, sanitize_ocr_text
 
 
 def test_sanitize_ocr_text_removes_low_signal_noise_and_merges_title_fragments() -> None:
@@ -38,3 +38,17 @@ def test_sanitize_ocr_text_keeps_numeric_compliance_lines() -> None:
             "45% Alc./Vol. (90 Proof)",
         ]
     )
+
+
+def test_recover_likely_title_uses_expected_text_for_strong_fragment_match() -> None:
+    raw_text = "\n".join(
+        [
+            "BIGE UBLE IPA!",
+            "got Se",
+        ]
+    )
+
+    assert recover_likely_title(
+        raw_text,
+        ["Big Tree", "Double IPA", "Big Tree Double IPA"],
+    ) == "Big Tree Double IPA"

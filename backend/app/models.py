@@ -51,6 +51,7 @@ class ReviewResponse(BaseModel):
     overall_status: ReviewStatus
     summary: str
     raw_text: str
+    recovered_text: str | None = None
     extracted_fields: LabelFields
     field_results: list[FieldReviewResult]
     preprocessing_notes: list[str]

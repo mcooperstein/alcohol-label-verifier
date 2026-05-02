@@ -26,7 +26,7 @@ from .models import (
     ReviewStatus,
 )
 from .services.image_processing import preprocess_image
-from .services.ocr import OCRUnavailableError, extract_text
+from .services.ocr import OCRUnavailableError, extract_text, recover_likely_title
 from .services.parsing import extract_label_fields
 from .services.validation import validate_label
 
@@ -76,6 +76,11 @@ def run_review(image_bytes: bytes, application: ApplicationData) -> ReviewRespon
         alternate_images=alternate_images,
         expected_texts=expected_texts,
     )
+    title_candidates = [application.brand_name]
+    if application.class_type:
+        title_candidates.append(application.class_type)
+        title_candidates.append(f"{application.brand_name} {application.class_type}")
+    recovered_text = recover_likely_title(ocr_result.text, title_candidates)
     if ocr_result.rotation_degrees:
         preprocessing_notes.append(
             f"Rotated the image {ocr_result.rotation_degrees} degrees for OCR."
@@ -87,6 +92,10 @@ def run_review(image_bytes: bytes, application: ApplicationData) -> ReviewRespon
     if ocr_result.image_variant != "thresholded":
         preprocessing_notes.append(
             f"Used the {ocr_result.image_variant} image variant for OCR."
+        )
+    if recovered_text:
+        preprocessing_notes.append(
+            f"Recovered a likely title from OCR fragments: {recovered_text}."
         )
     extracted_fields = extract_label_fields(ocr_result.text)
     overall_status, field_results, warnings, summary = validate_label(
@@ -101,6 +110,7 @@ def run_review(image_bytes: bytes, application: ApplicationData) -> ReviewRespon
         overall_status=overall_status,
         summary=summary,
         raw_text=ocr_result.text,
+        recovered_text=recovered_text,
         extracted_fields=extracted_fields,
         field_results=field_results,
         preprocessing_notes=preprocessing_notes,

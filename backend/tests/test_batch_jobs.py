@@ -15,6 +15,7 @@ def make_review(status: ReviewStatus, summary: str) -> ReviewResponse:
         overall_status=status,
         summary=summary,
         raw_text="",
+        recovered_text=None,
         extracted_fields=LabelFields(),
         field_results=[
             FieldReviewResult(

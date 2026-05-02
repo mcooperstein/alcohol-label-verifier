@@ -19,6 +19,7 @@ class OCRResult:
     rotation_degrees: int = 0
     page_segmentation_mode: int = 6
     image_variant: str = "thresholded"
+    recovered_text: str | None = None
 
 
 def normalize_ocr_line(line: str) -> str:
@@ -94,6 +95,43 @@ def sanitize_ocr_text(raw_text: str) -> str:
         cleaned_lines.append(normalized)
 
     return "\n".join(cleaned_lines)
+
+
+def recover_likely_title(raw_text: str, expected_texts: list[str] | None) -> str | None:
+    lines = [normalize_ocr_line(line) for line in raw_text.splitlines() if normalize_ocr_line(line)]
+    if not lines:
+        return None
+
+    fragments = [*lines]
+    fragments.extend(
+        f"{lines[index]} {lines[index + 1]}"
+        for index in range(len(lines) - 1)
+    )
+    if len(lines) > 1:
+        fragments.append(" ".join(lines))
+
+    best_expected: str | None = None
+    best_score = 0.0
+
+    for expected_text in expected_texts or []:
+        candidate = expected_text.strip()
+        if len(normalize_for_match(candidate).replace(" ", "")) < 5:
+            continue
+
+        for fragment in fragments:
+            fragment_normalized = normalize_for_match(fragment)
+            if len(fragment_normalized.replace(" ", "")) < 5:
+                continue
+
+            score = similarity(fragment, candidate)
+            if score > best_score:
+                best_expected = candidate
+                best_score = score
+
+    if best_expected is None or best_score < 0.8:
+        return None
+
+    return best_expected
 
 
 def rotate_image(image: np.ndarray, rotation_degrees: int) -> np.ndarray:

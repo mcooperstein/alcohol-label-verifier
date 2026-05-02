@@ -410,6 +410,13 @@ function App() {
                   </div>
                 ) : null}
 
+                {singleResult.recovered_text ? (
+                  <div className="text-card">
+                    <h3>Likely recovered title</h3>
+                    <pre>{singleResult.recovered_text}</pre>
+                  </div>
+                ) : null}
+
                 <div className="text-card">
                   <h3>Extracted text</h3>
                   <pre>{singleResult.raw_text || 'No text was extracted.'}</pre>
