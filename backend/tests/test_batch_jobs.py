@@ -6,6 +6,7 @@ from app.models import (
     LabelFields,
     ReviewResponse,
     ReviewStatus,
+    SingleReviewJobResponse,
 )
 
 
@@ -102,3 +103,33 @@ def test_process_batch_job_marks_missing_image_as_failure(monkeypatch) -> None:
     assert job.results[0].error == "Upload an image file whose name matches image_filename exactly."
 
     del main.batch_jobs[job_id]
+
+
+def test_process_single_review_job_completes(monkeypatch) -> None:
+    expected_review = make_review(ReviewStatus.FAIL, "Failed: Alcohol content.")
+
+    def fake_run_review(*, image_bytes: bytes, application):  # type: ignore[no-untyped-def]
+        assert image_bytes == b"image-bytes"
+        assert application.brand_name == "Example"
+        return expected_review
+
+    monkeypatch.setattr(main, "run_review", fake_run_review)
+
+    job_id = "single-job"
+    main.single_review_jobs[job_id] = SingleReviewJobResponse(
+        job_id=job_id,
+        status=BatchJobStatus.QUEUED,
+    )
+
+    main.process_single_review_job(
+        job_id=job_id,
+        image_bytes=b"image-bytes",
+        application=main.ApplicationData(brand_name="Example"),
+    )
+
+    job = main.single_review_jobs[job_id]
+    assert job.status == BatchJobStatus.COMPLETED
+    assert job.result == expected_review
+    assert job.error is None
+
+    del main.single_review_jobs[job_id]

@@ -22,6 +22,7 @@ from .models import (
     BatchReviewJobResponse,
     BatchReviewResponse,
     ReviewResponse,
+    SingleReviewJobResponse,
     ReviewStatus,
 )
 from .services.image_processing import preprocess_image
@@ -43,6 +44,7 @@ app.add_middleware(
 )
 
 batch_jobs: dict[str, BatchReviewJobResponse] = {}
+single_review_jobs: dict[str, SingleReviewJobResponse] = {}
 batch_jobs_lock = Lock()
 
 
@@ -156,6 +158,14 @@ def update_batch_job(job_id: str, **changes: object) -> None:
         batch_jobs[job_id] = current.model_copy(update=changes)
 
 
+def update_single_review_job(job_id: str, **changes: object) -> None:
+    with batch_jobs_lock:
+        current = single_review_jobs.get(job_id)
+        if current is None:
+            return
+        single_review_jobs[job_id] = current.model_copy(update=changes)
+
+
 def build_missing_image_item(row_number: int, application_id: str | None, image_filename: str) -> BatchReviewItem:
     return BatchReviewItem(
         row_number=row_number,
@@ -251,6 +261,24 @@ def process_batch_job(
         )
 
 
+def process_single_review_job(*, job_id: str, image_bytes: bytes, application: ApplicationData) -> None:
+    update_single_review_job(job_id, status=BatchJobStatus.RUNNING)
+
+    try:
+        review = run_review(image_bytes=image_bytes, application=application)
+        update_single_review_job(
+            job_id,
+            status=BatchJobStatus.COMPLETED,
+            result=review,
+        )
+    except Exception as exc:  # pragma: no cover - protective job-level failure path
+        update_single_review_job(
+            job_id,
+            status=BatchJobStatus.FAILED,
+            error=str(exc),
+        )
+
+
 @app.exception_handler(OCRUnavailableError)
 async def handle_ocr_unavailable(_: object, exc: OCRUnavailableError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": str(exc)})
@@ -272,6 +300,47 @@ async def review_label(
 
     application = parse_application_data(application_data)
     return run_review(image_bytes=image_bytes, application=application)
+
+
+@app.post("/api/review-jobs", response_model=SingleReviewJobResponse, status_code=202)
+async def create_review_job(
+    label_image: UploadFile = File(...),
+    application_data: str = Form(...),
+) -> SingleReviewJobResponse:
+    image_bytes = await label_image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Label image upload was empty.")
+
+    application = parse_application_data(application_data)
+    job_id = uuid4().hex
+    job = SingleReviewJobResponse(
+        job_id=job_id,
+        status=BatchJobStatus.QUEUED,
+    )
+    with batch_jobs_lock:
+        single_review_jobs[job_id] = job
+
+    asyncio.create_task(
+        asyncio.to_thread(
+            process_single_review_job,
+            job_id=job_id,
+            image_bytes=image_bytes,
+            application=application,
+        )
+    )
+
+    return job
+
+
+@app.get("/api/review-jobs/{job_id}", response_model=SingleReviewJobResponse)
+async def get_review_job(job_id: str) -> SingleReviewJobResponse:
+    with batch_jobs_lock:
+        job = single_review_jobs.get(job_id)
+
+    if job is None:
+        raise HTTPException(status_code=404, detail="Single review job not found.")
+
+    return job
 
 
 @app.post("/api/batch-review", response_model=BatchReviewResponse)

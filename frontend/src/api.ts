@@ -1,4 +1,8 @@
-import type { ApplicationData, BatchReviewJobResponse, ReviewResponse } from './types'
+import type {
+  ApplicationData,
+  BatchReviewJobResponse,
+  SingleReviewJobResponse,
+} from './types'
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.ok) {
@@ -24,17 +28,22 @@ async function parseResponse<T>(response: Response): Promise<T> {
 export async function submitSingleReview(
   image: File,
   applicationData: ApplicationData,
-): Promise<ReviewResponse> {
+): Promise<SingleReviewJobResponse> {
   const formData = new FormData()
   formData.append('label_image', image)
   formData.append('application_data', JSON.stringify(applicationData))
 
-  const response = await fetch('/api/review', {
+  const response = await fetch('/api/review-jobs', {
     method: 'POST',
     body: formData,
   })
 
-  return parseResponse<ReviewResponse>(response)
+  return parseResponse<SingleReviewJobResponse>(response)
+}
+
+export async function getSingleReviewJob(jobId: string): Promise<SingleReviewJobResponse> {
+  const response = await fetch(`/api/review-jobs/${jobId}`)
+  return parseResponse<SingleReviewJobResponse>(response)
 }
 
 export async function submitBatchReview(

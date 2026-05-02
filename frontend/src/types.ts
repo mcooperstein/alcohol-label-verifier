@@ -71,3 +71,10 @@ export interface BatchReviewJobResponse {
   results: BatchReviewItem[]
   error: string | null
 }
+
+export interface SingleReviewJobResponse {
+  job_id: string
+  status: BatchJobStatus
+  result: ReviewResponse | null
+  error: string | null
+}

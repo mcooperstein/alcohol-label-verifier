@@ -1,5 +1,10 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
-import { getBatchReviewJob, submitBatchReview, submitSingleReview } from './api'
+import {
+  getBatchReviewJob,
+  getSingleReviewJob,
+  submitBatchReview,
+  submitSingleReview,
+} from './api'
 import './App.css'
 import type {
   ApplicationData,
@@ -8,6 +13,7 @@ import type {
   FieldReviewResult,
   ReviewResponse,
   ReviewStatus,
+  SingleReviewJobResponse,
 } from './types'
 
 const initialApplicationData: ApplicationData = {
@@ -49,8 +55,10 @@ function App() {
   const [applicationData, setApplicationData] = useState<ApplicationData>(initialApplicationData)
   const [singleImage, setSingleImage] = useState<File | null>(null)
   const [singleResult, setSingleResult] = useState<ReviewResponse | null>(null)
+  const [singleJob, setSingleJob] = useState<SingleReviewJobResponse | null>(null)
   const [singleError, setSingleError] = useState<string>('')
   const [isSubmittingSingle, setIsSubmittingSingle] = useState(false)
+  const isSingleRunning = singleJob?.status === 'queued' || singleJob?.status === 'running'
 
   const [batchCsv, setBatchCsv] = useState<File | null>(null)
   const [batchImages, setBatchImages] = useState<File[]>([])
@@ -63,6 +71,40 @@ function App() {
     () => batchImages.map((file) => file.name).join(', '),
     [batchImages],
   )
+
+  useEffect(() => {
+    if (!singleJob || !isSingleRunning) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const updatedJob = await getSingleReviewJob(singleJob.job_id)
+        setSingleJob(updatedJob)
+        if (updatedJob.result) {
+          setSingleResult(updatedJob.result)
+        }
+        if (updatedJob.status === 'failed' && updatedJob.error) {
+          setSingleError(updatedJob.error)
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unable to refresh single review progress.'
+        setSingleError(message)
+        setSingleJob((current) =>
+          current
+            ? {
+                ...current,
+                status: 'failed',
+                error: message,
+              }
+            : current,
+        )
+      }
+    }, 1200)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [singleJob, isSingleRunning])
 
   useEffect(() => {
     if (!batchJob || !isBatchRunning) {
@@ -117,10 +159,12 @@ function App() {
 
     setIsSubmittingSingle(true)
     setSingleError('')
+    setSingleResult(null)
+    setSingleJob(null)
 
     try {
-      const result = await submitSingleReview(singleImage, applicationData)
-      setSingleResult(result)
+      const job = await submitSingleReview(singleImage, applicationData)
+      setSingleJob(job)
     } catch (error) {
       setSingleResult(null)
       setSingleError(error instanceof Error ? error.message : 'Unable to review the label.')
@@ -293,8 +337,12 @@ function App() {
 
             {singleError ? <p className="error-banner">{singleError}</p> : null}
 
-            <button className="primary-button" disabled={isSubmittingSingle} type="submit">
-              {isSubmittingSingle ? 'Reviewing label...' : 'Run review'}
+            <button className="primary-button" disabled={isSubmittingSingle || isSingleRunning} type="submit">
+              {isSubmittingSingle
+                ? 'Starting review...'
+                : isSingleRunning
+                  ? 'Review in progress...'
+                  : 'Run review'}
             </button>
           </form>
 
@@ -303,6 +351,19 @@ function App() {
               <h2>Review result</h2>
               <p>Field-by-field results explain what matched and what needs attention.</p>
             </div>
+
+            {singleJob ? (
+              <div className="summary-card">
+                <div className="summary-header batch-progress-header">
+                  <p className="progress-copy">
+                    <strong>{batchJobStatusLabel(singleJob.status)}</strong>
+                    {singleJob.status === 'completed'
+                      ? ' - review finished.'
+                      : ' - label review is processing in the background.'}
+                  </p>
+                </div>
+              </div>
+            ) : null}
 
             {singleResult ? (
               <>
@@ -354,6 +415,11 @@ function App() {
                   <pre>{singleResult.raw_text || 'No text was extracted.'}</pre>
                 </div>
               </>
+            ) : singleJob ? (
+              <div className="empty-state">
+                <h3>Review queued</h3>
+                <p>The label review is running in the background. Results will appear here automatically.</p>
+              </div>
             ) : (
               <div className="empty-state">
                 <h3>No review yet</h3>

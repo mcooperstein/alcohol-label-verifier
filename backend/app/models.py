@@ -87,3 +87,10 @@ class BatchReviewJobResponse(BaseModel):
     failed: int
     results: list[BatchReviewItem] = Field(default_factory=list)
     error: str | None = None
+
+
+class SingleReviewJobResponse(BaseModel):
+    job_id: str
+    status: BatchJobStatus
+    result: ReviewResponse | None = None
+    error: str | None = None
