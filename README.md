@@ -6,6 +6,16 @@ A standalone prototype for compliance reviewers that compares expected alcohol l
 
 **Live URL:** https://alcohol-label-verifier-12lu.onrender.com/
 
+## Version 1 screenshots
+
+### Version 1 single review
+
+![Version 1 single review screenshot](docs/screenshots/version-1-single-review.png)
+
+### Version 1 batch review
+
+![Version 1 batch review screenshot](docs/screenshots/version-1-batch-review.png)
+
 ## What it does
 
 - Reviews a single label image against manually entered application data
